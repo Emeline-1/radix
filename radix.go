@@ -3,6 +3,11 @@ package radix
 import (
 	"sort"
 	"strings"
+	"errors"
+	"fmt"
+	"net"
+	"strconv"
+	"github.com/nlpodyssey/gopickle/types"
 )
 
 // WalkFn is used when walking the tree. Takes a
@@ -37,6 +42,10 @@ type node struct {
 	// We avoid a fully materialized slice to save memory,
 	// since in most cases we expect to be sparse
 	edges edges
+}
+
+func (node *node) Call(args ...interface{}) (interface{}, error) {
+	return node, nil
 }
 
 func (n *node) isLeaf() bool {
@@ -115,6 +124,46 @@ func New() *Tree {
 	return NewFromMap(nil)
 }
 
+//For pickle
+func (tree *Tree) Call(args ...interface{}) (interface{}, error) {
+	return tree, nil
+}
+
+// For pickle
+func (tree *Tree) PySetState(state interface{}) error {
+	elements, ok := state.(*types.List); 
+	if !ok {
+		return errors.New (fmt.Sprintf ("Radix.tree: Expected *types.List but got %T", state))
+	}
+
+	for _, element_i := range *elements {
+		/* --- Access all data --- */
+		element, t1 := element_i.(*types.Tuple)
+		if !t1 {
+			return errors.New (fmt.Sprintf ("Radix.tree: Expected *types.Tuple but got %T", element_i))
+		}
+
+		prefix, t2 := element.Get(0).(string)
+		if !t2 {
+			return errors.New (fmt.Sprintf ("Radix.tree: Expected string but got %T", element.Get(0)))
+		}
+		as_dict, t3 := element.Get(1).(*types.Dict)
+		if !t3 {
+			return errors.New (fmt.Sprintf ("Radix.tree: Expected *types.Dict: %T", element.Get(1)))
+		}
+
+		d, present := as_dict.Get ("as")
+		if !present {
+			return errors.New (fmt.Sprintf ("Radix.tree: no 'as' key present"))
+		}
+
+		/* --- Insert prefix in tree --- */
+    	radix_prefix := get_binary_string (prefix)
+        tree.Insert (radix_prefix, d)
+	}
+	return nil
+}
+
 // NewFromMap returns a new tree containing the keys
 // from an existing map
 func NewFromMap(m map[string]interface{}) *Tree {
@@ -144,6 +193,27 @@ func longestPrefix(k1, k2 string) int {
 		}
 	}
 	return i
+}
+
+/**
+ * Returns the prefix as a binary string.
+ * The binary string is cut at mask length.
+ * ex: 1.0.4.0/22 -> "0000000100000000000001"
+ */
+func get_binary_string (prefix string) string {
+
+    ip := strings.Split (prefix, "/")[0]
+    ip_byte := net.ParseIP (ip)
+
+    var ip_string string
+    if len (ip_byte) == 4 {
+        ip_string = fmt.Sprintf("%08b%08b%08b%08b", ip_byte[0], ip_byte[1], ip_byte[2], ip_byte[3])
+    } else {
+        ip_string = fmt.Sprintf("%08b%08b%08b%08b", ip_byte[12], ip_byte[13], ip_byte[14], ip_byte[15])
+    }
+    
+    l,_ := strconv.Atoi (strings.Split (prefix, "/")[1])
+    return ip_string[:l]
 }
 
 // Insert is used to add a newentry or update
