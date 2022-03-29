@@ -147,9 +147,12 @@ func (tree *Tree) PySetState(state interface{}) error {
 		if !t2 {
 			return errors.New (fmt.Sprintf ("Radix.tree: Expected string but got %T", element.Get(0)))
 		}
+		if strings.Contains (prefix, ":") { // Ignore IPv6
+			continue
+		}
 		as_dict, t3 := element.Get(1).(*types.Dict)
 		if !t3 {
-			return errors.New (fmt.Sprintf ("Radix.tree: Expected *types.Dict: %T", element.Get(1)))
+			return errors.New (fmt.Sprintf ("Radix.tree: Expected *types.Dict but got: %T", element.Get(1)))
 		}
 
 		d, present := as_dict.Get ("as")
@@ -158,10 +161,18 @@ func (tree *Tree) PySetState(state interface{}) error {
 		}
 
 		/* --- Insert prefix in tree --- */
-    	radix_prefix := get_binary_string (prefix)
-        tree.Insert (radix_prefix, d)
+		radix_prefix := get_binary_string (prefix)
+		tree.Insert (radix_prefix, d)
 	}
 	return nil
+}
+
+// For pickle
+func FindClass (module, name string) (interface{}, error) {
+    if module == "radix" && name == "Radix" {
+        return New(), nil
+    }
+    return nil, fmt.Errorf("class not found :( " + module + " " + name)
 }
 
 // NewFromMap returns a new tree containing the keys
