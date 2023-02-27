@@ -119,6 +119,10 @@ type Tree struct {
 	size int
 }
 
+func (tree *Tree) String () string {
+	return "Not implemented on purpose"
+}
+
 // New returns an empty Tree
 func New() *Tree {
 	return NewFromMap(nil)
@@ -152,7 +156,7 @@ func (tree *Tree) PySetState(state interface{}) error {
 		}
 		as_dict, t3 := element.Get(1).(*types.Dict)
 		if !t3 {
-			return errors.New (fmt.Sprintf ("Radix.tree: Expected *types.Dict but got: %T", element.Get(1)))
+			return errors.New (fmt.Sprintf ("Radix.tree: Expected *types.Dict: %T", element.Get(1)))
 		}
 
 		d, present := as_dict.Get ("as")
@@ -161,8 +165,8 @@ func (tree *Tree) PySetState(state interface{}) error {
 		}
 
 		/* --- Insert prefix in tree --- */
-		radix_prefix := get_binary_string (prefix)
-		tree.Insert (radix_prefix, d)
+    	radix_prefix := get_binary_string (prefix)
+        tree.Insert (radix_prefix, d)
 	}
 	return nil
 }
@@ -459,17 +463,22 @@ func (t *Tree) Get(s string) (interface{}, bool) {
 	return nil, false
 }
 
+func (t *Tree) LongestPrefix(s string) (key string, val interface{}, pres bool) {
+	key, val, pres, _ = t.longestPrefix (s)
+	return
+}
+
 // LongestPrefix is like Get, but instead of an
 // exact match, it will return the longest prefix match.
 // When looking for a longest prefix, remove last bit.
-func (t *Tree) LongestPrefix(s string) (string, interface{}, bool) {
-	var last *LeafNode
+func (t *Tree) longestPrefix(s string) (string, interface{}, bool, *node) {
+	var last *node
 	n := t.root
 	search := s
 	for {
 		// Look for a leaf node
 		if n.isLeaf() {
-			last = n.leaf
+			last = n
 		}
 
 		// Check for key exhaution
@@ -491,9 +500,71 @@ func (t *Tree) LongestPrefix(s string) (string, interface{}, bool) {
 		}
 	}
 	if last != nil {
-		return last.Key, last.Val, true
+		return last.leaf.Key, last.leaf.Val, true, last
 	}
-	return "", nil, false
+	return "", nil, false, nil
+}
+
+func (t *Tree) BFS_print () {
+	/* --- BFS traversal --- */
+	queue := make ([]*node, 0)
+	queue = append (queue, t.root)
+	for len (queue) != 0 {
+		curr := queue[0]
+		queue = queue[1:]
+
+		fmt.Println ("-----------")
+		fmt.Println ("Node prefix", curr.prefix)
+		if curr.isLeaf () {
+			fmt.Println ("Node leaf", curr.leaf.Key)
+		} else {
+			fmt.Println ("Node leaf: /")
+		}
+
+		for _, edge := range (curr.edges) {
+			queue = append (queue, edge.node)
+			fmt.Println ("Edges:", string(edge.label))
+		}
+	}
+}
+
+/**
+ * Given a prefix A, this function returns the first prefix equal or included
+ * in A, but not included or equal to any of A's more specifics. 
+ * 
+ * A node can have:
+ * - 0 children: there is no more-specific prefix included in prefix A.
+ *   This means that any address can be picked within prefix A without worry. Return prefix A.
+ * - 1 child: there exist one or more more-specific prefixes within A, but there is room for more.
+ *   Return the first non-included prefix.
+ * - 2 children: prefix A is entirely covered by its more-specific prefixes. There is no room
+ *   left to pick an IP address. Return false.
+ * 
+ * By construction of the radix tree, a BFS is not necessary to find
+ * the first non included prefix. Knowing how many children a node has
+ * is enough to determine in which cas we are.
+ */
+func (t *Tree) FirstNonIncludedPrefix (s string) (string, bool) {
+	_,_, pres, n := t.longestPrefix (s)
+	if pres {
+		if len (n.edges) == 0 { // Node has no children -> Return self
+			return n.leaf.Key, true
+		}
+
+		if len (n.edges) == 1 { // Node has 1 child -> Return the counterpart child
+			return n.leaf.Key + invert_binary_label (n.edges[0].label), true
+		}
+		// Node has 2 children -> Prefix s is completely covered.
+	}
+	return "", false
+}
+
+func invert_binary_label (s byte) string {
+	if string (s) == "1" {
+		return "0"
+	} else {
+		return "1"
+	}
 }
 
 // Minimum is used to return the minimum value in the tree
